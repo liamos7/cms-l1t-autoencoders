@@ -6,18 +6,28 @@
 import argparse
 import os
 import numpy as np
+import matplotlib
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-import seaborn as sns
+import matplotlib.colors as mcolors
 import h5py
 from sklearn.linear_model import lasso_path, LassoCV, LinearRegression
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import cross_val_score
 
-sns.set_theme(style='whitegrid', context='notebook', font_scale=1.15)
 plt.rcParams.update({
+    'font.family': 'sans-serif',
+    'font.size': 13,
+    'axes.titlesize': 14,
+    'axes.labelsize': 13,
+    'xtick.labelsize': 11,
+    'ytick.labelsize': 11,
+    'legend.fontsize': 11,
     'figure.dpi': 150,
     'axes.titlepad': 10,
     'axes.labelpad': 8,
+    'axes.spines.top': False,
+    'axes.spines.right': False,
 })
 
 # extraction
@@ -187,72 +197,70 @@ def plot_lasso_paths(alphas, coefs, target_name, out_dir, top_k=5,
     if cv_coefs is not None:
         active_at_cv = set(int(d) for d in np.where(np.abs(cv_coefs) > 1e-12)[0])
 
-    fig, ax = plt.subplots(figsize=(14, 8))
+    # Use a qualitative colormap for active dims
+    n_active_total = len(active_at_cv)
+    cmap = plt.cm.get_cmap('tab20', max(n_active_total, 1))
+    active_color = {d: cmap(i) for i, d in enumerate(sorted(active_at_cv))}
+
+    fig, ax = plt.subplots(figsize=(13, 7))
     log_alphas = np.log10(alphas)
     log_alpha_cv = np.log10(alpha_cv) if alpha_cv is not None else None
 
-    prop_cycle = plt.rcParams['axes.prop_cycle'].by_key()['color']
-    color_idx = 0
-
+    # Grey inactive lines first
     for d in range(latent_dim):
-        is_active = d in active_at_cv
-        is_top    = d in first_entries
-
-        if is_active:
-            color = prop_cycle[color_idx % len(prop_cycle)]
-            color_idx += 1
-            lw = 2.2
-            alpha_line = 0.9
-            # Build label: entry rank if in top_k, else just mark active
-            if is_top:
-                rank = first_entries.index(d) + 1
-                label = f'latent[{d}] (enters #{rank}, CV active)'
-            else:
-                label = f'latent[{d}] (CV active)'
-            ax.plot(log_alphas, coefs[d, :], color=color, linewidth=lw,
-                    alpha=alpha_line, label=label, zorder=3)
-            # Annotate dim index at right edge
-            if log_alpha_cv is not None:
-                ax.annotate(f'[{d}]',
-                            xy=(log_alphas[-1], coefs[d, -1]),
-                            xytext=(log_alphas[-1] + 0.02, coefs[d, -1]),
-                            fontsize=7, color=color, va='center',
-                            clip_on=False)
-        else:
-            ax.plot(log_alphas, coefs[d, :], color='grey', alpha=0.20,
+        if d not in active_at_cv:
+            ax.plot(log_alphas, coefs[d, :], color='#cccccc', alpha=0.5,
                     linewidth=0.7, zorder=1)
 
-    # Vertical line at CV-optimal α
+    # Colored active lines on top; annotate top_k at right edge only
+    for rank, d in enumerate(first_entries):
+        if d not in active_at_cv:
+            continue
+        color = active_color[d]
+        ax.plot(log_alphas, coefs[d, :], color=color, linewidth=2.2,
+                alpha=0.95, zorder=3)
+        ax.annotate(f'$z_{{{d}}}$ (#{rank+1})',
+                    xy=(log_alphas[-1], coefs[d, -1]),
+                    xytext=(log_alphas[-1] + 0.05, coefs[d, -1]),
+                    fontsize=9, color=color, va='center', clip_on=False)
+
+    for d in sorted(active_at_cv):
+        if d in first_entries:
+            continue
+        color = active_color[d]
+        ax.plot(log_alphas, coefs[d, :], color=color, linewidth=1.6,
+                alpha=0.75, zorder=2)
+
+    # CV-optimal α line
     if log_alpha_cv is not None:
         ax.axvline(log_alpha_cv, color='black', linestyle='--', linewidth=1.8,
-                   label=f'CV-optimal α = {alpha_cv:.2e}', zorder=4)
+                   label=f'CV-optimal $\\alpha$ = {alpha_cv:.2e}', zorder=4)
+        ax.legend(framealpha=0.85, edgecolor='0.7')
 
     ax.axhline(0, color='k', linewidth=0.5)
-    ax.set_xlabel(r'$\log_{10}(\alpha)$  [larger $\alpha$ $\rightarrow$ more sparsity]')
-    ax.set_ylabel('Standardised Lasso coefficient')
+    ax.set_xlabel(r'$\log_{10}(\alpha)$  [larger $\alpha$ $\to$ more sparsity]')
+    ax.set_ylabel('Standardised Lasso Coefficient')
     ax.set_title(
-        f'Lasso regularisation paths — predicting {target_name}\n'
+        f'Lasso Regularisation Paths — predicting {target_name}\n'
         r'Coloured: $\beta \neq 0$ at CV-optimal $\alpha$;  grey: exactly zero')
-    ax.legend(fontsize=9, loc='upper left', framealpha=0.85,
-              ncol=2 if len(active_at_cv) > 6 else 1)
+    ax.grid(True, alpha=0.2, linestyle='--')
 
-    # Text box listing the selected set
+    # Compact text box
     if active_at_cv:
         sorted_active = sorted(active_at_cv)
         n_active = len(sorted_active)
-        box_text = (f'CV-selected set ({n_active} / {latent_dim} dims):\n'
-                    + str(sorted_active))
-        ax.text(0.98, 0.02, box_text, transform=ax.transAxes,
-                fontsize=8, va='bottom', ha='right',
-                bbox=dict(boxstyle='round,pad=0.4', facecolor='lightyellow',
-                          edgecolor='grey', alpha=0.9))
+        box_text = f'CV-selected: {n_active} / {latent_dim} dims\n{sorted_active}'
+        ax.text(0.02, 0.02, box_text, transform=ax.transAxes,
+                fontsize=8, va='bottom', ha='left',
+                bbox=dict(boxstyle='round,pad=0.4', facecolor='#fffde7',
+                          edgecolor='0.7', alpha=0.9))
 
-    plt.tight_layout(pad=1.5)
+    fig.tight_layout(pad=1.5)
     path = os.path.join(out_dir, f'lasso_path_{target_name}.png')
-    plt.savefig(path, dpi=200, bbox_inches='tight')
-    plt.savefig(path.replace('.png', '.pdf'), bbox_inches='tight')
+    fig.savefig(path, dpi=200, bbox_inches='tight')
+    fig.savefig(path.replace('.png', '.pdf'), bbox_inches='tight')
     print(f'  Saved: {path}')
-    plt.close()
+    plt.close(fig)
 
 
 def plot_active_set(cv_result, target_name, out_dir):
@@ -270,40 +278,43 @@ def plot_active_set(cv_result, target_name, out_dir):
     zero_set   = [d for d in range(latent_dim) if d not in set(active_set)]
 
     n_active_dims = len(active_set)
-    # Scale right-panel height to number of active dims (min 5 in)
-    fig_h = max(5, 0.35 * n_active_dims + 2)
+    fig_h = max(6, 0.30 * n_active_dims + 2)
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, fig_h),
                                    gridspec_kw={'width_ratios': [3, 1]})
 
-    # Left: all dims — shows the sparsity pattern
-    colors_all = ['tab:red' if d in set(active_set) else 'lightgrey'
-                  for d in range(latent_dim)]
-    ax1.bar(range(latent_dim), coefs, color=colors_all,
-            width=1.0, edgecolor='none')
+    # Left: all dims — magnitude-colored active, grey zero
+    abs_max = np.abs(coefs[active_set]).max() if active_set else 1.0
+    norm = mcolors.Normalize(vmin=0, vmax=abs_max)
+    bar_colors_all = [
+        plt.cm.Reds(norm(abs(coefs[d]))) if d in set(active_set) else '#e0e0e0'
+        for d in range(latent_dim)
+    ]
+    ax1.bar(range(latent_dim), coefs, color=bar_colors_all, width=1.0, edgecolor='none')
     ax1.axhline(0, color='k', linewidth=0.6)
-    ax1.set_xlabel('Latent dimension index')
+    ax1.set_xlabel('Latent Dimension Index')
     ax1.set_ylabel(r'Lasso $\hat{\beta}$ at CV-optimal $\alpha$')
     ax1.set_title(
-        f'Lasso coefficients — predicting {target_name}\n'
-        f'CV-optimal $\\alpha$ = {cv_result["alpha_cv"]:.2e}  |  '
-        f'{len(active_set)} / {latent_dim} selected (red),  '
-        f'{len(zero_set)} exactly zero (grey)')
+        f'Lasso Coefficients — predicting {target_name}\n'
+        f'CV $\\alpha$ = {cv_result["alpha_cv"]:.2e}  |  '
+        f'{len(active_set)} / {latent_dim} selected,  '
+        f'{len(zero_set)} exactly zero')
     ax1.set_xlim(-0.5, latent_dim - 0.5)
+    ax1.grid(True, alpha=0.2, linestyle='--', axis='y')
 
-    # Right: zoom on active dims only, sorted by |β|
-    if len(active_set) > 0:
+    # Right: active dims sorted by |β|
+    if active_set:
         order = np.argsort(-np.abs(coefs[active_set]))
         ordered_dims  = [active_set[i] for i in order]
         ordered_coefs = coefs[ordered_dims]
-        bar_colors = ['tab:red' if c > 0 else 'tab:blue'
-                      for c in ordered_coefs]
+        bar_colors = ['#e6194b' if c > 0 else '#4363d8' for c in ordered_coefs]
         bars = ax2.barh(range(len(ordered_dims)), ordered_coefs,
                         color=bar_colors, edgecolor='none')
         ax2.set_yticks(range(len(ordered_dims)))
-        ax2.set_yticklabels([f'latent[{d}]' for d in ordered_dims])
+        ax2.set_yticklabels([f'$z_{{{d}}}$' for d in ordered_dims], fontsize=9)
         ax2.axvline(0, color='k', linewidth=0.6)
         ax2.set_xlabel(r'$\hat{\beta}$')
-        ax2.set_title(f'Active set ({len(active_set)} dims)\nsorted by $|\\beta|$')
+        ax2.set_title(f'Active Set ({len(active_set)} dims)\nSorted by $|\\beta|$')
+        ax2.grid(True, alpha=0.2, linestyle='--', axis='x')
         x_range = np.abs(ordered_coefs).max() if len(ordered_coefs) else 1
         for bar, val in zip(bars, ordered_coefs):
             xpos = bar.get_width() + (0.02 * x_range if val >= 0 else -0.02 * x_range)
@@ -313,14 +324,14 @@ def plot_active_set(cv_result, target_name, out_dir):
     else:
         ax2.text(0.5, 0.5, 'No active dims', transform=ax2.transAxes,
                  ha='center', va='center', fontsize=12)
-        ax2.set_title('Active set')
+        ax2.set_title('Active Set')
 
-    plt.tight_layout(pad=1.5)
+    fig.tight_layout(pad=1.5)
     path = os.path.join(out_dir, f'active_set_{target_name}.png')
-    plt.savefig(path, dpi=200, bbox_inches='tight')
-    plt.savefig(path.replace('.png', '.pdf'), bbox_inches='tight')
+    fig.savefig(path, dpi=200, bbox_inches='tight')
+    fig.savefig(path.replace('.png', '.pdf'), bbox_inches='tight')
     print(f'  Saved: {path}')
-    plt.close()
+    plt.close(fig)
 
 
 def plot_n_active(alphas, coefs, target_name, out_dir, alpha_cv=None):
@@ -329,23 +340,24 @@ def plot_n_active(alphas, coefs, target_name, out_dir, alpha_cv=None):
 
     fig, ax = plt.subplots(figsize=(9, 5))
     log_alphas = np.log10(alphas)
-    ax.plot(log_alphas, n_active, linewidth=2)
+    ax.plot(log_alphas, n_active, linewidth=2, color='#4363d8')
 
     if alpha_cv is not None:
-        ax.axvline(np.log10(alpha_cv), color='r', linestyle='--', linewidth=1.5,
+        ax.axvline(np.log10(alpha_cv), color='#e6194b', linestyle='--', linewidth=1.8,
                    label=f'CV optimal ($\\alpha={alpha_cv:.2e}$)')
-        ax.legend()
+        ax.legend(framealpha=0.85, edgecolor='0.7')
 
     ax.set_xlabel(r'$\log_{10}(\alpha)$')
-    ax.set_ylabel('Number of active latent dimensions')
-    ax.set_title(f'Latent sparsity — predicting {target_name}')
+    ax.set_ylabel('Number of Active Latent Dimensions')
+    ax.set_title(f'Latent Sparsity — predicting {target_name}')
+    ax.grid(True, alpha=0.2, linestyle='--')
 
-    plt.tight_layout(pad=1.5)
+    fig.tight_layout(pad=1.5)
     path = os.path.join(out_dir, f'n_active_{target_name}.png')
-    plt.savefig(path, dpi=200, bbox_inches='tight')
-    plt.savefig(path.replace('.png', '.pdf'), bbox_inches='tight')
+    fig.savefig(path, dpi=200, bbox_inches='tight')
+    fig.savefig(path.replace('.png', '.pdf'), bbox_inches='tight')
     print(f'  Saved: {path}')
-    plt.close()
+    plt.close(fig)
 
 
 # plotting R^2
@@ -357,36 +369,42 @@ def plot_single_dim_r2(r2s, target_name, out_dir, top_k=10):
 
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
 
-    colors = ['tab:red' if d in order[:top_k] else 'steelblue'
-              for d in range(latent_dim)]
-    ax1.bar(range(latent_dim), r2s, color=colors, width=1.0, edgecolor='none')
-    ax1.set_xlabel('Latent dimension index')
+    norm = mcolors.Normalize(vmin=r2s.min(), vmax=r2s.max())
+    bar_colors_all = [
+        plt.cm.Reds(norm(r2s[d])) if d in order[:top_k] else '#d0d8e8'
+        for d in range(latent_dim)
+    ]
+    ax1.bar(range(latent_dim), r2s, color=bar_colors_all, width=1.0, edgecolor='none')
+    ax1.set_xlabel('Latent Dimension Index')
     ax1.set_ylabel(r'$R^2$ (single-dim OLS)')
     ax1.set_title(
         f'Per-dimension $R^2$ — predicting {target_name}\n'
-        r'Univariate OLS; top-' + str(top_k) + r' in red; baseline $R^2=0$ = mean prediction')
+        r'Univariate OLS; top-' + str(top_k) + r' highlighted; baseline $R^2=0$ = mean prediction')
     ax1.set_xlim(-0.5, latent_dim - 0.5)
+    ax1.grid(True, alpha=0.2, linestyle='--', axis='y')
 
     top_dims = order[:top_k]
     top_r2 = r2s[top_dims]
-    bars = ax2.barh(range(top_k-1, -1, -1), top_r2, color='tab:orange',
-                    edgecolor='none')
+    norm2 = mcolors.Normalize(vmin=top_r2.min(), vmax=top_r2.max())
+    top_colors = [plt.cm.Oranges(norm2(v)) for v in top_r2]
+    bars = ax2.barh(range(top_k-1, -1, -1), top_r2, color=top_colors, edgecolor='none')
     ax2.set_yticks(range(top_k-1, -1, -1))
-    ax2.set_yticklabels([f'latent[{d}]' for d in top_dims])
+    ax2.set_yticklabels([f'$z_{{{d}}}$' for d in top_dims], fontsize=11)
     ax2.set_xlabel(r'$R^2$')
-    ax2.set_title(f'Top {top_k} single-dim predictors\nof {target_name}')
+    ax2.set_title(f'Top {top_k} Single-dim Predictors\nof {target_name}')
+    ax2.grid(True, alpha=0.2, linestyle='--', axis='x')
     x_range = top_r2.max() if len(top_r2) else 1
     for bar, r2 in zip(bars, top_r2):
         ax2.text(bar.get_width() + 0.01 * x_range,
                  bar.get_y() + bar.get_height()/2,
                  f'{r2:.4f}', va='center', fontsize=9)
 
-    plt.tight_layout(pad=1.5)
+    fig.tight_layout(pad=1.5)
     path = os.path.join(out_dir, f'single_dim_r2_{target_name}.png')
-    plt.savefig(path, dpi=200, bbox_inches='tight')
-    plt.savefig(path.replace('.png', '.pdf'), bbox_inches='tight')
+    fig.savefig(path, dpi=200, bbox_inches='tight')
+    fig.savefig(path.replace('.png', '.pdf'), bbox_inches='tight')
     print(f'  Saved: {path}')
-    plt.close()
+    plt.close(fig)
 
 
 def plot_cumulative_r2(r2_train_entry, r2_cv_entry, r2_train_coef, r2_cv_coef,
@@ -398,53 +416,42 @@ def plot_cumulative_r2(r2_train_entry, r2_cv_entry, r2_train_coef, r2_cv_coef,
     is predicting the sample mean for every event.
     """
     fig, axes = plt.subplots(1, 2, figsize=(15, 6), sharey=True)
-    fig.subplots_adjust(wspace=0.08)
+    fig.subplots_adjust(wspace=0.06)
     ax1, ax2 = axes
 
     n = len(r2_train_entry)
     ks = np.arange(1, n + 1)
-
     ylabel = r'$R^2 = 1 - SS_\mathrm{res}/SS_\mathrm{tot}$'
 
-    # Left: lasso entry order
-    ax1.plot(ks, r2_train_entry, linewidth=1.5, alpha=0.8,
-             label='Train $R^2$')
-    if r2_cv_entry:
-        cv_ks, cv_vals = zip(*r2_cv_entry)
-        ax1.plot(cv_ks, cv_vals, 'o-', markersize=4, linewidth=1.5,
-                 label='5-fold CV $R^2$')
-    if full_r2 is not None:
-        ax1.axhline(full_r2, color='grey', linestyle='--', alpha=0.7,
-                    label=f'All-80-dim $R^2$ = {full_r2:.4f}')
-    ax1.set_xlabel('Number of latent dimensions added\n(Lasso entry order)')
+    for ax, r2_train, r2_cv, xlabel, subtitle in [
+        (ax1, r2_train_entry, r2_cv_entry,
+         'Latent Dimensions Added\n(Lasso Entry Order)', 'Lasso Entry Order'),
+        (ax2, r2_train_coef, r2_cv_coef,
+         'Latent Dimensions Added\n($|\\beta|$ Rank Order)', '$|\\beta|$ Rank Order'),
+    ]:
+        ax.plot(ks, r2_train, linewidth=2, color='#4363d8', label='Train $R^2$')
+        if r2_cv:
+            cv_ks, cv_vals = zip(*r2_cv)
+            ax.plot(cv_ks, cv_vals, 'o-', markersize=4, linewidth=2,
+                    color='#e6194b', label='5-fold CV $R^2$')
+        if full_r2 is not None:
+            ax.axhline(full_r2, color='0.5', linestyle='--', linewidth=1.5,
+                       label=f'All-80-dim $R^2$ = {full_r2:.4f}')
+        ax.set_xlabel(xlabel)
+        ax.set_title(f'Cumulative $R^2$ — {target_name}\n{subtitle}')
+        ax.legend(framealpha=0.85, edgecolor='0.7')
+        ax.set_xlim(1, n)
+        ax.set_ylim(bottom=0)
+        ax.grid(True, alpha=0.2, linestyle='--')
+
     ax1.set_ylabel(ylabel)
-    ax1.set_title(f'Cumulative $R^2$ — predicting {target_name}\nLasso entry order')
-    ax1.legend()
-    ax1.set_xlim(1, n)
-    ax1.set_ylim(bottom=0)
 
-    # Right: coefficient magnitude order
-    ax2.plot(ks, r2_train_coef, linewidth=1.5, alpha=0.8,
-             label='Train $R^2$')
-    if r2_cv_coef:
-        cv_ks, cv_vals = zip(*r2_cv_coef)
-        ax2.plot(cv_ks, cv_vals, 'o-', markersize=4, linewidth=1.5,
-                 label='5-fold CV $R^2$')
-    if full_r2 is not None:
-        ax2.axhline(full_r2, color='grey', linestyle='--', alpha=0.7,
-                    label=f'All-80-dim $R^2$ = {full_r2:.4f}')
-    ax2.set_xlabel('Number of latent dimensions added\n($|\\beta|$ rank order)')
-    ax2.set_title(f'Cumulative $R^2$ — predicting {target_name}\n$|\\beta|$ rank order')
-    ax2.legend()
-    ax2.set_xlim(1, n)
-    ax2.set_ylim(bottom=0)
-
-    plt.tight_layout(pad=1.5)
+    fig.tight_layout(pad=1.5)
     path = os.path.join(out_dir, f'cumulative_r2_{target_name}.png')
-    plt.savefig(path, dpi=200, bbox_inches='tight')
-    plt.savefig(path.replace('.png', '.pdf'), bbox_inches='tight')
+    fig.savefig(path, dpi=200, bbox_inches='tight')
+    fig.savefig(path.replace('.png', '.pdf'), bbox_inches='tight')
     print(f'  Saved: {path}')
-    plt.close()
+    plt.close(fig)
 
 
 # summaries

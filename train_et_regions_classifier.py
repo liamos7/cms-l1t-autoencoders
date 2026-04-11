@@ -15,8 +15,39 @@ import numpy as np
 import matplotlib
 matplotlib.use("Agg")  # non-interactive backend for cluster use
 import matplotlib.pyplot as plt
-import mplhep as hep
-hep.style.use("CMS")
+import matplotlib.colors as mcolors
+
+plt.rcParams.update({
+    "font.family": "sans-serif",
+    "font.size": 13,
+    "axes.titlesize": 15,
+    "axes.labelsize": 14,
+    "xtick.labelsize": 11,
+    "ytick.labelsize": 11,
+    "legend.fontsize": 10,
+    "figure.dpi": 150,
+    "axes.spines.top": False,
+    "axes.spines.right": False,
+})
+
+LABEL_MAP = {
+    "glugluhtogg":         r"$gg \to H \to \gamma\gamma$",
+    "glugluhtotautau":     r"$gg \to H \to \tau\tau$",
+    "hto2longlivedto4b":   r"$H \to 2LL \to 4b$",
+    "singleneutrino":      "Single Neutrino",
+    "suep":                "SUEP",
+    "tt":                  r"$t\bar{t}$",
+    "vbfhto2b":            r"VBF $H \to bb$",
+    "vbfhtotautau":        r"VBF $H \to \tau\tau$",
+    "zb":                  "Zero Bias",
+    "zprimetotautau":      r"$Z' \to \tau\tau$",
+    "zz":                  r"$ZZ$",
+}
+
+CLASS_COLORS = [
+    "#e6194b", "#3cb44b", "#4363d8", "#f58231", "#911eb4",
+    "#42d4f4", "#f032e6", "#bfef45", "#fabed4", "#469990", "#dcbeff",
+]
 import h5py
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
@@ -183,55 +214,54 @@ print(classification_report(y_test, y_pred_mlp, target_names=class_names, digits
 # ── Plot 1: MLP training curves ───────────────────────────────────────────────
 
 print("\nPlotting MLP training curves...")
-fig, axes = plt.subplots(1, 2, figsize=(12, 4))
+fig, axes = plt.subplots(1, 2, figsize=(12, 5))
 
-axes[0].plot(history.history["loss"],     label="train")
-axes[0].plot(history.history["val_loss"], label="val")
-axes[0].set_xlabel("Epoch"); axes[0].set_ylabel("Loss")
-axes[0].set_title("Cross-entropy loss"); axes[0].legend()
+for ax, key, ylabel, title in [
+    (axes[0], "loss",     "Cross-entropy Loss", "Loss"),
+    (axes[1], "accuracy", "Accuracy",           "Accuracy"),
+]:
+    ax.plot(history.history[key],         color="#4363d8", linewidth=2, label="Train")
+    ax.plot(history.history[f"val_{key}"], color="#e6194b", linewidth=2, linestyle="--", label="Val")
+    ax.set_xlabel("Epoch")
+    ax.set_ylabel(ylabel)
+    ax.set_title(title)
+    ax.legend(framealpha=0.85, edgecolor="0.7")
+    ax.grid(True, alpha=0.25, linestyle="--")
 
-axes[1].plot(history.history["accuracy"],     label="train")
-axes[1].plot(history.history["val_accuracy"], label="val")
-axes[1].set_xlabel("Epoch"); axes[1].set_ylabel("Accuracy")
-axes[1].set_title("Accuracy"); axes[1].legend()
-
-plt.suptitle("MLP training history (et_regions)", y=1.02)
-plt.tight_layout()
+fig.suptitle("MLP Training History — et_regions", fontsize=16, y=1.01)
+fig.tight_layout()
 fig.savefig(f"{OUT_DIR}/mlp_training_curves.png", dpi=150, bbox_inches="tight")
 plt.close(fig)
 print(f"  Saved mlp_training_curves.png")
 
 # ── Plot 2: confusion matrices ────────────────────────────────────────────────
 
-def plot_confusion_matrix(cm, class_names, title, ax):
+def plot_confusion_matrix(cm, names, title, ax):
+    pretty = [LABEL_MAP.get(n, n) for n in names]
     im = ax.imshow(cm, interpolation="nearest", cmap="Blues", vmin=0, vmax=1)
     plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
-    ax.set(
-        xticks=np.arange(len(class_names)),
-        yticks=np.arange(len(class_names)),
-        xticklabels=class_names,
-        yticklabels=class_names,
-        xlabel="Predicted label",
-        ylabel="True label",
-        title=title,
-    )
-    ax.tick_params(axis="x", rotation=45)
+    ticks = np.arange(len(names))
+    ax.set_xticks(ticks); ax.set_xticklabels(pretty, rotation=40, ha="right", fontsize=10)
+    ax.set_yticks(ticks); ax.set_yticklabels(pretty, fontsize=10)
+    ax.set_xlabel("Predicted", fontsize=12)
+    ax.set_ylabel("True", fontsize=12)
+    ax.set_title(title, fontsize=14, pad=10)
     thresh = 0.5
     for i in range(cm.shape[0]):
         for j in range(cm.shape[1]):
             color = "white" if cm[i, j] > thresh else "black"
             ax.text(j, i, f"{cm[i, j]:.2f}", ha="center", va="center",
-                    color=color, fontsize=8)
+                    color=color, fontsize=7.5)
 
 print("Plotting confusion matrices...")
 cm_xgb = confusion_matrix(y_test, y_pred_xgb, normalize="true")
 cm_mlp = confusion_matrix(y_test, y_pred_mlp, normalize="true")
 
-fig, axes = plt.subplots(1, 2, figsize=(16, 6))
+fig, axes = plt.subplots(1, 2, figsize=(20, 8))
 plot_confusion_matrix(cm_xgb, class_names, "XGBoost (normalised)", axes[0])
 plot_confusion_matrix(cm_mlp, class_names, "MLP (normalised)",     axes[1])
-plt.suptitle("Confusion matrices — et_regions features")
-plt.tight_layout()
+fig.suptitle("Confusion Matrices — et_regions features", fontsize=16, y=1.01)
+fig.tight_layout()
 fig.savefig(f"{OUT_DIR}/confusion_matrices.png", dpi=150, bbox_inches="tight")
 plt.close(fig)
 print(f"  Saved confusion_matrices.png")
@@ -239,7 +269,7 @@ print(f"  Saved confusion_matrices.png")
 # ── Plot 3: per-class ROC curves ──────────────────────────────────────────────
 
 print("Plotting ROC curves...")
-fig, axes = plt.subplots(1, 2, figsize=(14, 6))
+fig, axes = plt.subplots(1, 2, figsize=(16, 6))
 
 for ax, y_prob, model_name in [
     (axes[0], y_prob_xgb, "XGBoost"),
@@ -249,15 +279,18 @@ for ax, y_prob, model_name in [
         y_bin = (y_test == k).astype(int)
         fpr, tpr, _ = roc_curve(y_bin, y_prob[:, k])
         roc_auc = auc(fpr, tpr)
-        ax.plot(fpr, tpr, linewidth=1.5, label=f"{name}  (AUC={roc_auc:.3f})")
-    ax.plot([0, 1], [0, 1], "k--", linewidth=0.8, label="random")
-    ax.set_xlabel("False positive rate")
-    ax.set_ylabel("True positive rate")
-    ax.set_title(f"{model_name} — one-vs-rest ROC curves")
-    ax.legend(fontsize=7)
+        pretty = LABEL_MAP.get(name, name)
+        ax.plot(fpr, tpr, linewidth=2, color=CLASS_COLORS[k],
+                label=f"{pretty}  (AUC={roc_auc:.3f})")
+    ax.plot([0, 1], [0, 1], color="0.5", linestyle="--", linewidth=1, label="Random")
+    ax.set_xlabel("False Positive Rate")
+    ax.set_ylabel("True Positive Rate")
+    ax.set_title(model_name)
+    ax.grid(True, alpha=0.25, linestyle="--")
+    ax.legend(fontsize=8.5, framealpha=0.85, edgecolor="0.7", loc="lower right")
 
-plt.suptitle("Per-class ROC curves (one-vs-rest) — et_regions features")
-plt.tight_layout()
+fig.suptitle("Per-class ROC Curves (one-vs-rest) — et_regions", fontsize=16, y=1.01)
+fig.tight_layout()
 fig.savefig(f"{OUT_DIR}/roc_curves.png", dpi=150, bbox_inches="tight")
 plt.close(fig)
 print(f"  Saved roc_curves.png")
@@ -269,19 +302,27 @@ importances = xgb_model.feature_importances_
 top_n   = 20
 top_idx = np.argsort(importances)[-top_n:][::-1]
 
-# Convert flat index back to (eta, phi) grid coordinates
 top_eta = top_idx // 14
 top_phi = top_idx % 14
+vals = importances[top_idx]
 
-fig, ax = plt.subplots(figsize=(10, 5))
-ax.bar(np.arange(top_n), importances[top_idx])
+# Color bars by importance magnitude
+norm = mcolors.Normalize(vmin=vals.min(), vmax=vals.max())
+bar_colors = plt.cm.viridis(norm(vals))
+
+fig, ax = plt.subplots(figsize=(12, 5))
+bars = ax.bar(np.arange(top_n), vals, color=bar_colors, edgecolor="white", linewidth=0.5)
 ax.set_xticks(np.arange(top_n))
-ax.set_xticklabels([f"({e},{p})" for e, p in zip(top_eta, top_phi)], rotation=45, ha="right")
-ax.set_xlabel("Calorimeter cell (eta_idx, phi_idx)")
-ax.set_ylabel("Feature importance (XGBoost weight)")
-ax.set_title(f"Top {top_n} most discriminating calorimeter cells")
-plt.tight_layout()
-fig.savefig(f"{OUT_DIR}/xgb_feature_importances.png", dpi=150)
+ax.set_xticklabels([f"η={e}, φ={p}" for e, p in zip(top_eta, top_phi)], rotation=45, ha="right", fontsize=10)
+ax.set_xlabel("Calorimeter Cell")
+ax.set_ylabel("Feature Importance (XGBoost weight)")
+ax.set_title(f"Top {top_n} Most Discriminating Calorimeter Cells")
+ax.grid(True, alpha=0.25, linestyle="--", axis="y")
+sm = plt.cm.ScalarMappable(cmap="viridis", norm=norm)
+sm.set_array([])
+fig.colorbar(sm, ax=ax, label="Importance", pad=0.01)
+fig.tight_layout()
+fig.savefig(f"{OUT_DIR}/xgb_feature_importances.png", dpi=150, bbox_inches="tight")
 plt.close(fig)
 print(f"  Saved xgb_feature_importances.png")
 
@@ -296,24 +337,26 @@ for k in range(n_classes):
 
 x     = np.arange(n_classes)
 width = 0.35
+pretty_names = [LABEL_MAP.get(n, n) for n in class_names]
 
-fig, ax = plt.subplots(figsize=(12, 5))
-bars_xgb = ax.bar(x - width/2, aucs["XGBoost"], width, label="XGBoost", color="tab:blue")
-bars_mlp = ax.bar(x + width/2, aucs["MLP"],     width, label="MLP",     color="tab:orange")
+fig, ax = plt.subplots(figsize=(14, 6))
+bars_xgb = ax.bar(x - width/2, aucs["XGBoost"], width, label="XGBoost", color="#4363d8", edgecolor="white")
+bars_mlp = ax.bar(x + width/2, aucs["MLP"],     width, label="MLP",     color="#e6194b", edgecolor="white")
 
 ax.set_xticks(x)
-ax.set_xticklabels(class_names, rotation=45, ha="right")
+ax.set_xticklabels(pretty_names, rotation=35, ha="right", fontsize=11)
 ax.set_ylabel("One-vs-rest AUC")
-ax.set_title("Per-class AUC — et_regions features")
-ax.set_ylim(0, 1.05)
-ax.axhline(0.5, color="k", linestyle="--", linewidth=0.8, label="random")
-ax.legend()
+ax.set_title("Per-class AUC — et_regions Features")
+ax.set_ylim(0.4, 1.05)
+ax.axhline(0.5, color="0.5", linestyle="--", linewidth=1, label="Random")
+ax.grid(True, alpha=0.25, linestyle="--", axis="y")
+ax.legend(framealpha=0.85, edgecolor="0.7")
 
 for bar in [*bars_xgb, *bars_mlp]:
-    ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.005,
-            f"{bar.get_height():.3f}", ha="center", va="bottom", fontsize=7)
+    ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.004,
+            f"{bar.get_height():.3f}", ha="center", va="bottom", fontsize=8)
 
-plt.tight_layout()
+fig.tight_layout()
 fig.savefig(f"{OUT_DIR}/auc_bar_chart.png", dpi=150, bbox_inches="tight")
 plt.close(fig)
 print(f"  Saved auc_bar_chart.png")
