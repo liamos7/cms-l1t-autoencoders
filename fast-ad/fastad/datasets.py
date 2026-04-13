@@ -138,13 +138,72 @@ class ExposureDataset(Dataset):
 class NoiseDataset(ExposureDataset):
     def __getitem__(self, idx):
         # Generate random noise image
-        image = torch.randn(self.image_size)            
+        image = torch.randn(self.image_size)
         return image, 42
 
 
 class OneDataset(ExposureDataset):
     def __getitem__(self, idx):
         return torch.ones(self.image_size), 42
+
+
+class MonteCarloNegativeDataset(Dataset):
+    """
+    Oracle negative samples for EBM training: real data from the true background
+    distribution (ZB + SingleNeutrino merged).
+
+    SingleNeutrino events are included here so the model is not sensitive to
+    pure-pileup / empty-event signatures.  They are held OUT of test evaluation
+    so they never appear as a scored anomaly.
+
+    Loads et_regions from the two HDF5 files and applies CicadaTransform.
+    """
+    def __init__(self, root: str, transform=None, max_per_file: int = None):
+        self.transform = transform or CicadaTransform()
+        sl = slice(None, max_per_file)
+        chunks = []
+        for fname in ("zb.h5", "singleneutrino.h5"):
+            path = os.path.join(root, fname)
+            if not os.path.exists(path):
+                print(f"WARNING: {path} not found, skipping for MC negatives")
+                continue
+            with h5py.File(path, "r") as f:
+                chunks.append(f["et_regions"][sl])
+        if not chunks:
+            raise FileNotFoundError(f"No background files found in {root}")
+        self.data = np.concatenate(chunks, axis=0).astype(np.uint8)
+        print(f"MonteCarloNegativeDataset: {len(self.data)} events "
+              f"(ZB + SingleNeutrino) from {root}")
+
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, idx):
+        img = self.data[idx]
+        if self.transform is not None:
+            img = self.transform(img)
+        return img, -1  # label -1: background, never treated as anomaly
+
+
+def get_mc_negative_loader(
+    root: str,
+    batch_size: int = 512,
+    max_per_file: int = None,
+    shuffle: bool = True,
+) -> DataLoader:
+    """
+    Return an infinite-cycling DataLoader of real MC background events
+    (ZB + SingleNeutrino) to use as oracle negative samples for EBM training.
+    """
+    ds = MonteCarloNegativeDataset(root=root, max_per_file=max_per_file)
+    return DataLoader(
+        ds,
+        batch_size=batch_size,
+        shuffle=shuffle,
+        num_workers=0,
+        pin_memory=True,
+        drop_last=True,
+    )
 
 
 def get_inlier_inidices(targets, hold_out_set: set):

@@ -295,6 +295,8 @@ class NAEWithEnergyTraining(NAE):
         self.latent_dim = latent_dim
         self._replay_buffer = None
         self._buffer_ptr = 0
+        self._mc_neg_loader = None
+        self._mc_neg_iter = None
 
     def seed_buffer(self, loader, device, limit=None):
         """
@@ -340,12 +342,41 @@ class NAEWithEnergyTraining(NAE):
             self._replay_buffer[:end - self.buffer_size] = z_final[first:]
         self._buffer_ptr = end % self.buffer_size
 
+    def set_mc_negative_loader(self, loader):
+        """
+        Attach a DataLoader of real background events to use as oracle negative
+        samples instead of Langevin.  Call this before training begins.
+        Once set, train_step draws from it each step (cycling automatically).
+        Set to None to revert to Langevin sampling.
+        """
+        self._mc_neg_loader = loader
+        self._mc_neg_iter = iter(loader) if loader is not None else None
+        mode = "MC oracle negatives" if loader is not None else "Langevin"
+        print(f"[NAEWithEnergyTraining] Negative sample mode: {mode}")
+
+    def _sample_mc_negative(self, device):
+        """Draw one batch from the MC negative loader, cycling as needed."""
+        try:
+            x_neg, _ = next(self._mc_neg_iter)
+        except StopIteration:
+            self._mc_neg_iter = iter(self._mc_neg_loader)
+            x_neg, _ = next(self._mc_neg_iter)
+        return x_neg.to(device)
+
     def train_step(self, x, optimizer, clip_grad=None, **kwargs):
         optimizer.zero_grad()
-        
+
         # 1. Energy Computation
         pos_energy = self.energy(x)
-        x_neg = self.langevin_sample(x)
+
+        # Negative samples: oracle MC background or Langevin
+        if getattr(self, '_mc_neg_loader', None) is not None:
+            x_neg = self._sample_mc_negative(x.device)
+            # Match batch size (MC loader may differ by 1 at epoch boundary)
+            if x_neg.shape[0] != x.shape[0]:
+                x_neg = x_neg[:x.shape[0]]
+        else:
+            x_neg = self.langevin_sample(x)
         neg_energy = self.energy(x_neg)
 
         # 2. Loss Formulation

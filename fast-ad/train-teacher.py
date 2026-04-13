@@ -13,7 +13,7 @@ from fastad.utils import CreateFolder, IsReadableDir, IsValidFile, IntOrIntListA
 from fastad.models import get_teacher_model
 from fastad.trainers import BaseTrainer
 from fastad.loggers import BaseLogger
-from fastad.datasets import get_loaders
+from fastad.datasets import get_loaders, get_mc_negative_loader
 
 def get_phase2_scheduler(optimizer, warmup_steps, total_steps):
     """Creates a learning rate scheduler with linear warmup and cosine decay."""
@@ -52,10 +52,19 @@ def main(args) -> None:
         #from torchsummary import torchsummary
         #torchsummary.summary(model, input_size=(1, 18, 14))
 
+    # For CICADA EBM training: exclude SingleNeutrino (class 4) from the test
+    # signal set so pure-pileup events never count as anomalies in the AUC.
+    # SingleNeutrino is instead folded into the MC negative distribution below.
+    if args.dataset == "CICADA" and args.use_mc_negatives:
+        test_holdout = [1, 2, 3, 5, 6, 7, 8, 9, 10]  # class 4 omitted
+        print("MC negatives mode: SingleNeutrino removed from test holdout set.")
+    else:
+        test_holdout = args.holdout_class
+
     train_loader, val_loader = get_loaders(
-        hold_out_classes=args.holdout_class, batch_size=args.batch_size, ds_name=args.dataset, n_max=None, root=args.data_root_path,
+        hold_out_classes=test_holdout, batch_size=args.batch_size, ds_name=args.dataset, n_max=None, root=args.data_root_path,
     )
-    
+
     if args.model == "NAEWithEnergyTraining":
         # Load weights from Phase 1 Autoencoder
         if args.load_pretrained_path:
@@ -63,6 +72,16 @@ def main(args) -> None:
         
         # Seed the Replay Buffer with data to ground the Energy surface
         model.seed_buffer(train_loader, device)
+
+        # Oracle MC negatives: attach ZB + SingleNeutrino loader to the model.
+        # train_step will draw from it instead of running Langevin.
+        if args.use_mc_negatives and args.dataset == "CICADA":
+            mc_neg_loader = get_mc_negative_loader(
+                root=args.data_root_path,
+                batch_size=args.batch_size,
+                shuffle=True,
+            )
+            model.set_mc_negative_loader(mc_neg_loader)
 
         # Use AdamW and a lower learning rate to stabilize contrastive gradients
         optimizer = torch.optim.AdamW(model.parameters(), lr=args.learning_rate, weight_decay=1e-4)
@@ -196,5 +215,15 @@ if __name__ == "__main__":
         type=int,
         default=20,
         help="Latent dimension for the model (overrides dataset default)",
+    )
+    parser.add_argument(
+        "--use-mc-negatives",
+        action="store_true",
+        default=False,
+        help=(
+            "NAEWithEnergyTraining only: replace Langevin negative samples with "
+            "real MC background events (ZB + SingleNeutrino). Gives an upper bound "
+            "on EBM performance. SingleNeutrino is removed from the test holdout set."
+        ),
     )
     main(parser.parse_args())

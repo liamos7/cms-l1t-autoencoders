@@ -1,6 +1,7 @@
 # Large generated files
 conda/
-fast-ad/data/
+fast-ad/data/__pycache__
+fast-ad/data/h5_files
 fast-ad/outputs/
 logs/
 
