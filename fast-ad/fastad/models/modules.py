@@ -142,6 +142,7 @@ class CicadaDecoder(nn.Module):
             torch.nn.ConvTranspose2d(16, 8, kernel_size=3, stride=1, padding=0),
             torch.nn.LeakyReLU(),
             torch.nn.ConvTranspose2d(8, 1, kernel_size=3, stride=1, padding=0),
+            torch.nn.Sigmoid(),  # Fix #1: bound output to [0,1] to match input domain
         )
 
     def forward(self, x):

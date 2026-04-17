@@ -43,16 +43,14 @@ cd /scratch/network/lo8603/thesis/fast-ad
     #-ho 1,2,3,4,5,6,7,8,9,10 \
     #--epochs 100 \
    # -v
+  python train-teacher.py \
+    --dataset CICADA \
+    --model AE \
+    --data-root-path /scratch/network/lo8603/thesis/fast-ad/data/h5_files/ \
+    --latent-dim 20 \
+    --epochs 100 \
+    -o /scratch/network/lo8603/thesis/fast-ad/outputs/ae_phase1_sigmoid_dim20/
 
-
-python train-teacher.py \
-  --dataset CICADA \
-  --model NAEWithEnergyTraining \
-  --data-root-path /scratch/network/lo8603/thesis/fast-ad/data/h5_files/ \
-    --load-pretrained-path "./outputs/latent_dim_variation/ae_zb_dim20/model_best.pkl" \
-  --use-mc-negatives \
-  --epochs 50 \
-  -o ./outputs/nae_mc_upper_bound_dim20/
 
 echo "=============================="
 echo "End time: $(date)"

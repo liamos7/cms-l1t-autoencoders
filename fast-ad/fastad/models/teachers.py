@@ -383,17 +383,31 @@ class NAEWithEnergyTraining(NAE):
         # Contrastive term: minimize pos, maximize neg
         cd_loss = pos_energy.mean() - self.neg_lambda * neg_energy.mean()
 
-        # Stabilizer: Penalize squared energy of BOTH to prevent ballooning
-        # Loss = (E_pos - E_neg) + gamma * (E_pos^2 + E_neg^2)
-        reg_loss = self.gamma * (pos_energy.pow(2).mean() + neg_energy.pow(2).mean())
+        # Fix #2: Only regularize negative energy to prevent divergence
+        # (Yoon et al. Sec 6.1: "We regularize the energy of negative samples")
+        # Regularizing pos energy too fights the reconstruction objective.
+        reg_loss = self.gamma * neg_energy.pow(2).mean()
 
         # Weight decay
         l2_loss = sum(p.pow(2.0).sum() for p in self.parameters()) * self.l2_weight
 
-        loss = (cd_loss + reg_loss) / self.temperature + l2_loss
+        # Fix #4: Temperature only scales the CD term (the MLE gradient),
+        # not the regularization — otherwise changing T silently changes gamma.
+        loss = cd_loss / self.temperature + reg_loss + l2_loss
         
-        if torch.isnan(loss):
-            return {'loss': 0.0, 'warning': 'NaN detected'}
+        # Fix #5: NaN detection — log and skip but don't silently corrupt state
+        if torch.isnan(loss) or torch.isinf(loss):
+            print(f"[WARNING] NaN/Inf loss detected. "
+                  f"pos_E={pos_energy.mean().item():.4f}, "
+                  f"neg_E={neg_energy.mean().item():.4f}. Skipping step.")
+            optimizer.zero_grad()  # clear any partial gradients
+            return {
+                'loss': float('nan'),
+                'energy/pos_energy_': pos_energy.mean().item(),
+                'energy/neg_energy_': neg_energy.mean().item(),
+                'energy/diff_': float('nan'),
+                'warning': 'NaN/Inf detected, step skipped'
+            }
 
         loss.backward()
         if clip_grad:
@@ -432,6 +446,12 @@ class NAEWithEnergyTraining(NAE):
             e = self.energy(x).sum()
             grad = torch.autograd.grad(e, x)[0]
             with torch.no_grad():
+                # Fix #3: Normalize gradient to unit norm (matching latent chain)
+                # so step_size directly controls step magnitude regardless of
+                # energy landscape curvature.
+                grad_flat = grad.view(batch_size, -1)
+                grad_norm = grad_flat.norm(dim=1, keepdim=True).clamp(min=1e-8)
+                grad = grad / grad_norm.view(batch_size, 1, 1, 1)
                 step_size = self.x_step_size
                 if self.x_use_annealing:
                     step_size *= (1.0 - (step / self.x_steps) * 0.5)

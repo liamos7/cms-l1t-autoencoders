@@ -96,8 +96,12 @@ def main(args) -> None:
         optimizer = torch.optim.Adam(model.parameters(), lr=1e-4, weight_decay=1e-4)
         scheduler = None
 
+    # Fix #6: For energy-based training, select best model by AUC (not loss)
+    best_metric = 'auc' if args.model == 'NAEWithEnergyTraining' else 'loss'
+
     trainer = BaseTrainer(
         n_epochs=args.epochs, val_interval=args.val_interval, save_interval=args.save_interval, device=device,
+        best_model_metric=best_metric,
     )
 
     # f"logs/{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
