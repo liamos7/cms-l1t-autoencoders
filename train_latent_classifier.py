@@ -304,23 +304,25 @@ def plot_confusion_matrix(cm, names, title, ax):
     im = ax.imshow(cm, interpolation="nearest", cmap="Blues", vmin=0, vmax=1)
     plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
     ticks = np.arange(len(names))
-    ax.set_xticks(ticks); ax.set_xticklabels(pretty, rotation=40, ha="right", fontsize=10)
-    ax.set_yticks(ticks); ax.set_yticklabels(pretty, fontsize=10)
-    ax.set_xlabel("Predicted", fontsize=12)
-    ax.set_ylabel("True", fontsize=12)
+    ax.set_xticks(ticks)
+    ax.set_xticklabels(pretty, rotation=45, ha="right", fontsize=11)
+    ax.set_yticks(ticks)
+    ax.set_yticklabels(pretty, fontsize=11)
+    ax.set_xlabel("Predicted", fontsize=13)
+    ax.set_ylabel("True", fontsize=13)
     ax.set_title(title, fontsize=14, pad=10)
     thresh = 0.5
     for i in range(cm.shape[0]):
         for j in range(cm.shape[1]):
             color = "white" if cm[i, j] > thresh else "black"
             ax.text(j, i, f"{cm[i, j]:.2f}", ha="center", va="center",
-                    color=color, fontsize=7.5)
+                    color=color, fontsize=9)
 
 print("Plotting confusion matrices...")
 cm_xgb = confusion_matrix(y_test, y_pred_xgb, normalize="true")
 cm_mlp = confusion_matrix(y_test, y_pred_mlp, normalize="true")
 
-fig, axes = plt.subplots(1, 2, figsize=(20, 8))
+fig, axes = plt.subplots(1, 2, figsize=(24, 10))
 plot_confusion_matrix(cm_xgb, class_names, "XGBoost (normalised)", axes[0])
 plot_confusion_matrix(cm_mlp, class_names, "MLP (normalised)",     axes[1])
 fig.suptitle("Confusion Matrices — Latent Space Features", fontsize=16, y=1.01)
@@ -332,27 +334,42 @@ print(f"  Saved confusion_matrices.png")
 # ── Plot 5: per-class ROC curves ──────────────────────────────────────────────
 
 print("Plotting ROC curves...")
-fig, axes = plt.subplots(1, 2, figsize=(16, 6))
+fig, axes = plt.subplots(1, 2, figsize=(18, 7), sharey=True)
 
+legend_handles = []
 for ax, y_prob, model_name in [
-    (axes[0], y_prob_xgb, "XGBoost"),
-    (axes[1], y_prob_mlp, "MLP"),
+    (axes[0], y_prob_xgb, "XGBoost — Latent Space"),
+    (axes[1], y_prob_mlp, "MLP — Latent Space"),
 ]:
+    handles = []
     for k, name in enumerate(class_names):
         y_bin = (y_test == k).astype(int)
         fpr, tpr, _ = roc_curve(y_bin, y_prob[:, k])
         roc_auc = auc(fpr, tpr)
         pretty = LABEL_MAP.get(name, name)
-        ax.plot(fpr, tpr, linewidth=2, color=CLASS_COLORS[k],
-                label=f"{pretty}  (AUC={roc_auc:.3f})")
-    ax.plot([0, 1], [0, 1], color="0.5", linestyle="--", linewidth=1, label="Random")
+        line, = ax.plot(fpr, tpr, linewidth=2, color=CLASS_COLORS[k],
+                        label=f"{pretty}  AUC={roc_auc:.3f}")
+        handles.append(line)
+    ax.plot([0, 1], [0, 1], color="0.5", linestyle="--", linewidth=1)
     ax.set_xlabel("False Positive Rate")
     ax.set_ylabel("True Positive Rate")
-    ax.set_title(model_name)
+    ax.set_title(model_name, fontsize=13)
     ax.grid(True, alpha=0.25, linestyle="--")
-    ax.legend(fontsize=8.5, framealpha=0.85, edgecolor="0.7", loc="lower right")
+    if not legend_handles:
+        legend_handles = handles
 
-fig.suptitle("Per-class ROC Curves (one-vs-rest) — Latent Space", fontsize=16, y=1.01)
+# Single shared legend to the right of both panels
+fig.legend(
+    handles=legend_handles,
+    loc="center left",
+    bbox_to_anchor=(1.01, 0.5),
+    fontsize=10,
+    framealpha=0.9,
+    edgecolor="0.7",
+    title="Process  (AUC from XGBoost)",
+    title_fontsize=9,
+)
+fig.suptitle("Per-class ROC Curves (one-vs-rest) — Latent Space", fontsize=15, y=1.02)
 fig.tight_layout()
 fig.savefig(f"{OUT_DIR}/roc_curves.png", dpi=150, bbox_inches="tight")
 plt.close(fig)
@@ -398,22 +415,32 @@ x     = np.arange(n_classes)
 width = 0.35
 pretty_names = [LABEL_MAP.get(n, n) for n in class_names]
 
+all_aucs = aucs["XGBoost"] + aucs["MLP"]
+ymin = max(0.0, min(all_aucs) - 0.06)
+ymax = 1.03
+
 fig, ax = plt.subplots(figsize=(14, 6))
 bars_xgb = ax.bar(x - width/2, aucs["XGBoost"], width, label="XGBoost", color="#4363d8", edgecolor="white")
 bars_mlp = ax.bar(x + width/2, aucs["MLP"],     width, label="MLP",     color="#e6194b", edgecolor="white")
 
 ax.set_xticks(x)
-ax.set_xticklabels(pretty_names, rotation=35, ha="right", fontsize=11)
+ax.set_xticklabels(pretty_names, rotation=40, ha="right", fontsize=11)
 ax.set_ylabel("One-vs-rest AUC")
 ax.set_title("Per-class AUC — Latent Space Features")
-ax.set_ylim(0.4, 1.05)
+ax.set_ylim(ymin, ymax)
 ax.axhline(0.5, color="0.5", linestyle="--", linewidth=1, label="Random")
 ax.grid(True, alpha=0.25, linestyle="--", axis="y")
-ax.legend(framealpha=0.85, edgecolor="0.7")
+ax.legend(framealpha=0.85, edgecolor="0.7", loc="upper left")
 
 for bar in [*bars_xgb, *bars_mlp]:
-    ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.004,
-            f"{bar.get_height():.3f}", ha="center", va="bottom", fontsize=8)
+    v = bar.get_height()
+    # place label inside bar if it would clip above ymax, else above
+    if v + 0.025 > ymax:
+        ax.text(bar.get_x() + bar.get_width() / 2, v - 0.012,
+                f"{v:.3f}", ha="center", va="top", fontsize=8, color="white", fontweight="bold")
+    else:
+        ax.text(bar.get_x() + bar.get_width() / 2, v + 0.005,
+                f"{v:.3f}", ha="center", va="bottom", fontsize=8)
 
 fig.tight_layout()
 fig.savefig(f"{OUT_DIR}/auc_bar_chart.png", dpi=150, bbox_inches="tight")

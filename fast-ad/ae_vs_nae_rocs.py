@@ -11,7 +11,7 @@ from fastad.models.__init__ import get_cicada_ae, get_cicada_nae_with_energy
 sns.set_theme(style='whitegrid', context='notebook', font_scale=1.1)
 
 DATA_DIR = Path("./data/h5_files/")
-AE_PATH  = "outputs/ae_zb_npv_geq10_dim20/model_best.pkl"
+AE_PATH  = "outputs/latent_dim_variation/ae_zb_dim20/model_best.pkl"
 NAE_PATH = "outputs/nae_phase2_tuned_dim20/model_best.pkl"
 DEVICE   = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -137,16 +137,16 @@ for name, fname in signals.items():
 
 
 # ── Plotting helpers ──────────────────────────────────────────────────────────
-os.makedirs("plots", exist_ok=True)
+os.makedirs("plots/rocs", exist_ok=True)
 
 def safe_fname(name):
     return (name.replace(' ', '_').replace('→', 'to')
                 .replace("'", '').replace('τ', 'tau').replace('ℓ', 'l'))
 
 def save_fig(fig, stem):
-    fig.savefig(f'plots/{stem}.png', dpi=200, bbox_inches='tight')
-    fig.savefig(f'plots/{stem}.pdf', bbox_inches='tight')
-    print(f"  Saved: plots/{stem}.png")
+    fig.savefig(f'plots/rocs/{stem}.png', dpi=200, bbox_inches='tight')
+    fig.savefig(f'plots/rocs/{stem}.pdf', bbox_inches='tight')
+    print(f"  Saved: plots/rocs/{stem}.png")
     plt.close(fig)
 
 
