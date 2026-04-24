@@ -72,7 +72,6 @@ at the LHC/CMS CICADA L1 trigger system.
 
 | Directory | Description |
 |-----------|-------------|
-
 | `nae_phase2_dim20_zb_1/` | NAE with LMC, 20-dimensional latent space with n_z=30, λ_z=0.005, T=1.0, γ=0.01. |
 | `nae_phase2_dim20_zb_2/` | NAE with LMC, 20-dimensional latent space with n_z=60, λ_z=0.01, T=0.5, γ=0.005. |
 | `nae_mc_oracle_dim20_zb/` | Oracle experiment: replace Langevin sampling with real MC negatives. Establishes upper bound on contrastive objective. |
