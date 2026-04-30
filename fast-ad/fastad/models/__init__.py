@@ -1,3 +1,7 @@
+'''
+Model builder
+'''
+
 import torch
 from .modules import SimpleEncoder, SimpleDecoder, ConvNet2FC, DeConvNet2,\
  ConfigurableEncoder, ConfigurableDecoder, RGBEncoder, RGBDecoder, CicadaEncoder,\
