@@ -76,7 +76,7 @@ def load_run(run_dir):
     event_files = sorted(event_files, key=first_wall_time)
     print(f"Found {len(event_files)} event file(s) in {run_dir}")
 
-    # step → value dict per tag, later files override
+    # step to value dict per tag, later files override
     merged: dict[str, dict[int, float]] = defaultdict(dict)
 
     for path in event_files:
