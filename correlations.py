@@ -81,9 +81,7 @@ def plot_latent_tsne_with_observables(name, nmax=5000):
 
     pretty_title = LABEL_MAP.get(name, name)
 
-    # Use constrained_layout for clean colorbar placement with no collisions
-    fig, axes = plt.subplots(2, 3, figsize=(16, 10),
-                             layout="constrained")
+    fig, axes = plt.subplots(2, 3, figsize=(16, 10), layout="constrained")
     fig.suptitle(pretty_title, fontsize=15)
 
     for ax, (values, label, cmap) in zip(axes.flat, panels):
@@ -98,7 +96,6 @@ def plot_latent_tsne_with_observables(name, nmax=5000):
         ax.set_xlabel("t-SNE 1", fontsize=10)
         ax.set_ylabel("t-SNE 2", fontsize=10)
         ax.tick_params(labelsize=8)
-        # reduce tick density so labels don't crowd
         ax.xaxis.set_major_locator(plt.MaxNLocator(5))
         ax.yaxis.set_major_locator(plt.MaxNLocator(5))
         ax.spines["top"].set_visible(False)
@@ -155,7 +152,6 @@ def plot_latent_correlations(name, nmax=5000):
     vlim = max(0.1, _symmax(mat))
 
     # transpose so observables are rows (y) and latent dims are columns (x)
-    # → wide, readable figure
     fig_w = max(8, n_latent * 0.13 + 2.5)
     fig_h = n_obs * 0.55 + 1.8
     fig, ax = plt.subplots(figsize=(fig_w, fig_h))
@@ -276,7 +272,6 @@ def plot_combined_tsne(samples=ALL_SAMPLES, nmax=2000):
                 init="pca", random_state=42, n_jobs=-1)
     coords = tsne.fit_transform(latents_arr)
 
-    # wider figure to give legend room without squishing the scatter
     fig, ax = plt.subplots(figsize=(11, 7))
 
     unique_names = [s for s in samples if s in set(labels_arr)]
@@ -303,7 +298,7 @@ def plot_combined_tsne(samples=ALL_SAMPLES, nmax=2000):
         loc="upper left",
         bbox_to_anchor=(1.02, 1),
         borderaxespad=0,
-        markerscale=5,       # larger marker in legend
+        markerscale=5,
         framealpha=0.95,
         edgecolor="0.8",
         fontsize=11,
