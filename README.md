@@ -11,18 +11,18 @@ was submitted for Princeton University physics undergraduate requirements.
 
 | File | Description |
 |------|-------------|
-| `correlations.py` | t-SNE visualization of the CICADA latent space; correlation heatmaps of observables  across signal/background classes. Outputs to `plots/tsne/` and `plots/correlations/`. |
-| `lasso_analysis.py` | LASSO regression to identify which latent dimensions predict observables (teacher_score, total_et, nPV, first_jet_eta, ht). Computes regularization paths and R^2. Outputs to `plots/lasso/`.  |
-| `train_et_regions_classifier.py` | Trains XGBoost and MLP classifiers on raw 18x14 calorimeter grid (252 flattened features) to classify signal vs background. Comparison baseline. |
-| `train_latent_classifier.py` | Trains XGBoost and MLP classifiers on the 80-dim latent space features from the CICADA teacher encoder. Outputs to `plots/latent_classifier/`. |
-| `plot_training.py` | Reads TensorBoard event files and generates clean training curve figures (positive/negative energy, AUC vs epoch). Outputs to `plots/training/`. |
-| `requirements_backup.txt` | Snapshot of pip-installed packages in `myenv` (for reproducibility reference). |
+| [`correlations.py`](correlations.py) | t-SNE visualization of the CICADA latent space; correlation heatmaps of observables  across signal/background classes. Outputs to [`plots/tsne/`](plots/tsne/) and [`plots/correlations/`](plots/correlations/). |
+| [`lasso_analysis.py`](lasso_analysis.py) | LASSO regression to identify which latent dimensions predict observables (teacher_score, total_et, nPV, first_jet_eta, ht). Computes regularization paths and R^2. Outputs to `plots/lasso/`.  |
+| [`train_et_regions_classifier.py`](train_et_regions_classifier.py) | Trains XGBoost and MLP classifiers on raw 18x14 calorimeter grid (252 flattened features) to classify signal vs background. Comparison baseline. |
+| [`train_latent_classifier.py`](train_latent_classifier.py) | Trains XGBoost and MLP classifiers on the 80-dim latent space features from the CICADA teacher encoder. Outputs to [`plots/latent_classifier/`](plots/latent_classifier/). |
+| [`plot_training.py`](plot_training.py) | Reads TensorBoard event files and generates clean training curve figures (positive/negative energy, AUC vs epoch). Outputs to [`plots/training/`](plots/training/). |
+| [`requirements_backup.txt`](requirements_backup.txt) | Pip-installed packages in `myenv` (for reproducibility reference). |
 
 ---
 
-## `fast-ad/` — Main ML Project
+## [`fast-ad/`](fast-ad/) — Main ML Project
 
-### `fast-ad/fastad/` — Core ML Library
+### [`fast-ad/fastad/`](fast-ad/fastad/) — Core ML Library
 
 **`models/`**
 
