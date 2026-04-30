@@ -1,3 +1,7 @@
+'''
+For HDF5 data, plot t-SNE for event latent representations, and plot latent entry correlations with observables.
+'''
+
 import os
 import numpy as np
 import h5py
