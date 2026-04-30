@@ -1,7 +1,5 @@
 """
-ae.py
-=====
-Autoencoders
+Autoencoder model architectures and training methods
 """
 import numpy as np
 import torch
