@@ -91,8 +91,7 @@ def fit_lasso_cv(Z, y, cv=5):
     active_mask = model.coef_ != 0
     active_dims = np.where(active_mask)[0]
 
-    # R² = 1 - SS_res/SS_tot: fraction of target variance explained by the
-    # active latent dims; R²=0 means predicting the mean for every event.
+    # active latent dims; R^2=0 means predicting the mean for every event.
     return {
         'alpha_cv': model.alpha_,
         'r2': model.score(Z_s, y_s),
@@ -130,7 +129,6 @@ def single_dim_r2(Z, y):
     # Standardize once across all dims
     Z_s = (Z - Z.mean(axis=0)) / (Z.std(axis=0) + 1e-12)
     y_s = (y - y.mean()) / (y.std() + 1e-12)
-    # r² for univariate OLS = Pearson r² = (Z_sᵀ y_s / n)²
     r = (Z_s * y_s[:, None]).mean(axis=0)
     return r ** 2
 
@@ -146,9 +144,9 @@ def cumulative_r2(Z, y, dim_order, do_cv=True):
     """
     Compute R² using OLS with the first k dimensions (in the given order),
     for k = 1, 2, ..., len(dim_order).
-    Optionally computes 5-fold CV R² at selected checkpoints.
+    Optionally computes 5-fold CV R^2 at selected checkpoints.
 
-    Train R² is computed via QR decomposition: reuse the previous QR factorization
+    Train R^2 is computed via QR decomposition: reuse the previous QR factorization
     by appending one column at a time (Gram-Schmidt), avoiding a fresh fit each step.
     """
     scaler_Z = StandardScaler().fit(Z)
@@ -173,14 +171,12 @@ def cumulative_r2(Z, y, dim_order, do_cv=True):
             col /= norm
             Q = np.column_stack([Q, col]) if Q.shape[1] > 0 else col[:, None]
 
-        # Train R²: ||Q Qᵀ y||² / ||y||²
         proj = Q @ (Q.T @ y_s)
         r2_train.append(float(np.dot(proj, proj) / ss_tot))
 
         if do_cv and (k <= 20 or k % 5 == 0 or k == len(dim_order)):
             dims = dim_order[:k]
-            cv_scores = cross_val_score(LinearRegression(), Z_s[:, dims], y_s,
-                                        cv=5, scoring='r2')
+            cv_scores = cross_val_score(LinearRegression(), Z_s[:, dims], y_s, cv=5, scoring='r2')
             r2_cv.append((k, cv_scores.mean()))
 
     return r2_train, r2_cv
@@ -203,12 +199,11 @@ def plot_lasso_paths(alphas, coefs, target_name, out_dir, top_k=5,
     entry_order = get_entry_order(coefs, alphas)
     first_entries = entry_order[:top_k]
 
-    # Determine which dims are active at the CV-optimal α
+    # Determine which dims are active at the CV-optimal
     active_at_cv = set()
     if cv_coefs is not None:
         active_at_cv = set(int(d) for d in np.where(np.abs(cv_coefs) > 1e-12)[0])
 
-    # Use a qualitative colormap for active dims
     n_active_total = len(active_at_cv)
     cmap = matplotlib.colormaps.get_cmap('tab20').resampled(max(n_active_total, 1))
     active_color = {d: cmap(i) for i, d in enumerate(sorted(active_at_cv))}
@@ -242,7 +237,7 @@ def plot_lasso_paths(alphas, coefs, target_name, out_dir, top_k=5,
         ax.plot(log_alphas, coefs[d, :], color=color, linewidth=1.6,
                 alpha=0.75, zorder=2)
 
-    # CV-optimal α line
+    # CV-optimal line
     if log_alpha_cv is not None:
         ax.axvline(log_alpha_cv, color='black', linestyle='--', linewidth=1.8,
                    label=f'CV-optimal $\\alpha$ = {alpha_cv:.2e}', zorder=4)
@@ -275,14 +270,14 @@ def plot_lasso_paths(alphas, coefs, target_name, out_dir, top_k=5,
 
 
 def plot_active_set(cv_result, target_name, out_dir):
-    """Bar chart of Lasso coefficients at the CV-optimal α.
+    """Bar chart of Lasso coefficients at the CV-optimal alpha.
 
     Clearly distinguishes exactly-zero dims (grey, left panel) from the
     nonzero selected set (coloured, right panel), so sparsity is visually
     unambiguous.
     """
     coefs     = cv_result['coefs']          # shape (latent_dim,)
-    active    = cv_result['active_dims']    # indices with |β| > 0
+    active    = cv_result['active_dims']    # indices with |beta| > 0
     latent_dim = len(coefs)
 
     active_set = sorted(active.tolist())
@@ -312,7 +307,7 @@ def plot_active_set(cv_result, target_name, out_dir):
     ax1.set_xlim(-0.5, latent_dim - 0.5)
     ax1.grid(True, alpha=0.2, linestyle='--', axis='y')
 
-    # Right: active dims sorted by |β|
+    # Right: active dims sorted by |beta|
     if active_set:
         order = np.argsort(-np.abs(coefs[active_set]))
         ordered_dims  = [active_set[i] for i in order]
@@ -580,7 +575,7 @@ def main():
         'ht':            ht,
     }
 
-    # ── Subsample for R² breakdown if needed ─────────────────────────────────
+    # ── Subsample for R^2 breakdown if needed ─────────────────────────────────
     n_r2 = min(args.n_events_r2, len(Z))
     rng = np.random.RandomState(42)
     r2_idx = rng.choice(len(Z), n_r2, replace=False)
@@ -645,7 +640,7 @@ def main():
         print(f'  Analyzing target: {name}  (N={len(y_c)})')
         print(f'{"#"*70}')
 
-        # Single-dim R²
+        # Single-dim R^2
         print('  Computing single-dimension R² ...')
         r2_single = single_dim_r2(Z_c, y_c)
         plot_single_dim_r2(r2_single, name, args.out_dir)
@@ -654,11 +649,11 @@ def main():
         alphas, coefs = path_results[name]
         entry_order = get_entry_order(coefs, alphas)
 
-        # |β| rank order (from full-data CV results)
+        # |beta| rank order (from full-data CV results)
         coef_order = get_coef_magnitude_order(cv_results[name])
         full_r2 = cv_results[name]['r2']
 
-        # Cumulative R²
+        # Cumulative R^2
         print(f'  Computing cumulative R² (entry order, cv={do_cv}) ...')
         r2_train_entry, r2_cv_entry = cumulative_r2(Z_c, y_c, entry_order,
                                                      do_cv=do_cv)
