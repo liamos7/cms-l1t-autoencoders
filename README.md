@@ -16,8 +16,6 @@ was submitted for Princeton University physics undergraduate requirements.
 | `train_et_regions_classifier.py` | Trains XGBoost and MLP classifiers on raw 18x14 calorimeter grid (252 flattened features) to classify signal vs background. Comparison baseline. |
 | `train_latent_classifier.py` | Trains XGBoost and MLP classifiers on the 80-dim latent space features from the CICADA teacher encoder. Outputs to `plots/latent_classifier/`. |
 | `plot_training.py` | Reads TensorBoard event files and generates clean training curve figures (positive/negative energy, AUC vs epoch). Outputs to `plots/training/`. |
-| `pkl_cpu.py` | Utility to convert GPU model checkpoints to CPU-loadable format. |
-| `test_imports.py` | Sanity check: imports torch, numpy, sklearn, etc. and prints versions/CUDA availability. |
 | `requirements_backup.txt` | Snapshot of pip-installed packages in `myenv` (for reproducibility reference). |
 
 ---
@@ -52,7 +50,6 @@ was submitted for Princeton University physics undergraduate requirements.
 | `ae_vs_nae_rocs.py` | Loads best AE and best NAE checkpoints; scores test split for each signal class; produces overlaid ROC curves and AUC table. Uses stratified 80/10/10 split. |
 | `eval_latent_dim_rocs.py` | Iterates over `outputs/latent_dim_variation/`; computes ROC/AUC with 95% bootstrap CIs for each signal vs ZB at each latent dimension; produces per-signal ROC overlays and mean-AUC-vs-dim summary. |
 | `nae_mc_oracle_rocs.py` | Oracle/upper-bound experiment: scores the MC-oracle NAE on all signal classes; produces ROC curves and oracle-vs-teacher comparison plots. |
-| `CLAUDE.md` | Project documentation: training sequence, 6 code fixes (sigmoid decoder, energy regularization, gradient normalization, temperature decoupling, NaN handling, AUC-based selection), autoresearch sweep parameters. |
 
 ### `fast-ad/data/` — Dataset Preparation & Visualization
 
@@ -66,15 +63,13 @@ was submitted for Princeton University physics undergraduate requirements.
 | `et_regions_plotter.py` | Plots raw calorimeter grid distributions per class. |
 | `pileup_correlation_plotter.py` | Investigates correlations between pileup (nPV) and reconstruction energy. |
 | `teacher_roc.py` | ROC curves for the CICADA baseline ("teacher") model. |
-| `old_zb.h5` | Previous ZB HDF5 produced with the biased sampling pipeline (kept for comparison, gitignored). |
 | `plots/` | Output directory for the above visualizations; includes `zb_eos_npv_distribution.png` (nPV diagnostic). |
 
 ### `fast-ad/outputs/` — Model Checkpoints & Result
 
 | Directory | Description |
 |-----------|-------------|
-| `nae_phase2_dim20_zb_1/` | NAE with LMC, 20-dimensional latent space with n_z=30, λ_z=0.005, T=1.0, γ=0.01. |
-| `nae_phase2_dim20_zb_2/` | NAE with LMC, 20-dimensional latent space with n_z=60, λ_z=0.01, T=0.5, γ=0.005. |
+| `nae_phase2_dim20_zb/` | NAE with LMC, 20-dimensional latent space with n_z=60, λ_z=0.01, T=0.5, γ=0.005. |
 | `nae_mc_oracle_dim20_zb/` | Oracle experiment: replace Langevin sampling with real MC negatives. Establishes upper bound on contrastive objective. |
 | `latent_dim_variation/` | Sweep of AE models at latent dims 10, 20, 30, 40, 50, 60, 70, 80. Each subdir: `ae_zb_dim{N}/model_best.pkl`. |
 
@@ -133,10 +128,3 @@ All scripts run on the adroit cluster (Slurm), load `anaconda3/2024.10` + `cudat
 | `latent_classifier/` | Same for latent-space classifiers. |
 | `tsne/` | t-SNE embeddings of latent space. |
 | `training/` | Training curve figures. |
-
----
-
-## `logs/` — Slurm Job Logs (gitignored)
-
-Stdout/stderr from all submitted jobs. Naming: `train_*.out/err`, `classifiers_*.out/err`, `lasso_*.out/err`, `rocs_*.out/err`, etc.
-
