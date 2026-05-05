@@ -1,130 +1,331 @@
 # Real-Time Autoencoder Anomaly Detection Methods at the Large Hadron Collider
 
-This is an anomaly detection senior thesis for particle physics, focused on training a
-Normalized Autoencoder (NAE) for Beyond-Standard-Model (BSM) physics detection
-at the LHC/CMS CICADA L1 trigger system. This [senior thesis](O'Shaughnessy_Liam_Senior_Thesis.pdf)
-was submitted for Princeton University physics undergraduate requirements.
+**Princeton University Senior Thesis — Liam J. O'Shaughnessy (2025–2026)**  
+Advised by Professor Isobel R. Ojalvo
+
+This repository contains all code, trained model checkpoints, and generated figures for a senior thesis investigating anomaly detection at the CMS Level-1 trigger. The project has two main contributions:
+
+1. **Latent space interpretability analysis** of the CICADA teacher autoencoder — characterizing what physical information the 80-dimensional bottleneck encodes using t-SNE, lasso regression, and event classifiers.
+2. **Energy-Based Model (EBM) training** of a Normalized Autoencoder (NAE) with Langevin Monte Carlo negative sampling, designed to suppress outlier reconstruction and improve anomaly sensitivity.
+
+The thesis PDF is included in this repository: [`O'Shaughnessy_Liam_Senior_Thesis.pdf`](O'Shaughnessy_Liam_Senior_Thesis.pdf).
 
 ---
 
-## Top-Level Files
+## Background
 
-| File | Description |
-|------|-------------|
-| [`correlations.py`](correlations.py) | t-SNE visualization of the CICADA latent space; correlation heatmaps of observables  across signal/background classes. Outputs to [`plots/tsne/`](plots/tsne/) and [`plots/correlations/`](plots/correlations/). |
-| [`lasso_analysis.py`](lasso_analysis.py) | LASSO regression to identify which latent dimensions predict observables (teacher_score, total_et, nPV, first_jet_eta, ht). Computes regularization paths and R^2. Outputs to `plots/lasso/`.  |
-| [`train_et_regions_classifier.py`](train_et_regions_classifier.py) | Trains XGBoost and MLP classifiers on raw 18x14 calorimeter grid (252 flattened features) to classify signal vs background. Comparison baseline. |
-| [`train_latent_classifier.py`](train_latent_classifier.py) | Trains XGBoost and MLP classifiers on the 80-dim latent space features from the CICADA teacher encoder. Outputs to [`plots/latent_classifier/`](plots/latent_classifier/). |
-| [`plot_training.py`](plot_training.py) | Reads TensorBoard event files and generates clean training curve figures (positive/negative energy, AUC vs epoch). Outputs to [`plots/training/`](plots/training/). |
-| [`requirements_backup.txt`](requirements_backup.txt) | Pip-installed packages in `myenv` (for reproducibility reference). |
+[CICADA](https://arxiv.org/abs/2411.19506) is an autoencoder-based anomaly detection algorithm deployed at the CMS Layer-1 Calorimeter trigger. It compresses 18×14 calorimeter trigger tower images into an 80-dimensional latent space and assigns each event a reconstruction error score. Events that deviate from Zero Bias (minimum-bias) training data receive high scores and can trigger readout without presupposing the form of new physics.
+
+This thesis evaluates the teacher autoencoder's learned representations and proposes an energy-based enhancement via a Normalized Autoencoder (NAE) trained using contrastive divergence with Langevin Monte Carlo (LMC) negative sampling. The NAE is trained on ten BSM holdout signal classes (ggH→γγ, ggH→ττ, tt̄, VBF H→ττ, VBF H→bb, Z′→ττ, ZZ, SUEP, H→2LL→4b, Single Neutrino) against a Zero Bias background.
 
 ---
 
-## [`fast-ad/`](fast-ad/) — Main ML Project
+## Key Results
 
-### [`fast-ad/fastad/`](fast-ad/fastad/) — Core ML Library
+| Model | Signal (worst) | Signal (best) | Notes |
+|-------|----------------|---------------|-------|
+| CICADA teacher-v1.0.0 | Single Neutrino: 0.622 | Z′→ττ: 0.976 | Deployed baseline |
+| Improved AE (PyTorch) | Single Neutrino: 0.972 | tt̄: 0.9998 | Phase 1, d=20 |
+| LMC NAE | Single Neutrino: 0.975 | tt̄: 0.9998 | Phase 2, d=20 |
+| Oracle NAE (upper bound) | Single Neutrino: 0.980 | tt̄: 1.000 | MC negatives |
 
-**`models/`**
-
-| File | Description |
-|------|-------------|
-| `modules.py` | Low-level building blocks: `SimpleEncoder` (conv layers to latent dim), `SimpleDecoder` (conv transpose to 18x14 image), `CicadaDecoder` (with sigmoid output), Gaussian/Laplace distribution classes. |
-| `teachers.py` | Main model implementations: `AE` (standard autoencoder, Phase 1) and `NAEWithEnergyTraining` (Phase 2 energy-based model). Implements contrastive divergence loss with Langevin Monte Carlo sampling. Energy is defined as reconstruction error. Contains documented bug fixes. |
-| `students.py` | Lightweight student models (`StudentA`, `StudentB`) for distillation experiments. Not core to thesis. |
-| `__init__.py` | Factory functions: `get_teacher_model()`, `get_cicada_ae()`, `get_cicada_nae_with_energy()`. |
-
-**Other modules**
-
-| File | Description |
-|------|-------------|
-| `datasets.py` | CICADA dataset loader with 3-way (80/10/10) stratified split. Label 0 = ZB background; labels 1–10 = signal processes. Log-normalizes 18x14 calorimeter images. |
-| `trainers.py` | `BaseTrainer`: iterative training loop. Tracks best model by loss (Phase 1) or AUC (Phase 2). Logs metrics via TensorBoard. |
-| `loggers.py` | `BaseLogger` for TensorBoard integration. Accumulates scalars and images per epoch. |
-| `utils.py` | ROC-AUC computation, argument parsing, averaging meters. |
-
-### `fast-ad/` Root Scripts
-
-| File | Description |
-|------|-------------|
-| `train-teacher.py` | Entry point for Phase 1 (AE) and Phase 2 (NAE) training. Args: `--model {AE, NAEWithEnergyTraining}`, `--latent-dim`, `--load-pretrained-path`, `--epochs`, `-o` (output dir). |
-| `ae_vs_nae_rocs.py` | Loads best AE and best NAE checkpoints; scores test split for each signal class; produces overlaid ROC curves and AUC table. Uses stratified 80/10/10 split. |
-| `eval_latent_dim_rocs.py` | Iterates over `outputs/latent_dim_variation/`; computes ROC/AUC with 95% bootstrap CIs for each signal vs ZB at each latent dimension; produces per-signal ROC overlays and mean-AUC-vs-dim summary. |
-| `nae_mc_oracle_rocs.py` | Oracle/upper-bound experiment: scores the MC-oracle NAE on all signal classes; produces ROC curves and oracle-vs-teacher comparison plots. |
-
-### `fast-ad/data/` — Dataset Preparation & Visualization
-
-| File/Dir | Description |
-|----------|-------------|
-| `h5_files/` | 11 HDF5 files (gitignored). Each contains: `et_regions` (raw 18x14 images), `teacher_latent` (80-dim encodings), `teacher_score`, `total_et`, `nPV`, `first_jet_eta`, `ht`. Files: `zb.h5`, `glugluhtotautau.h5`, `glugluhtogg.h5`, `singleneutrino.h5`, `suep.h5`, `tt.h5`, `vbfhto2b.h5`, `vbfhtotautau.h5`, `zprimetotautau.h5`, `zz.h5`. |
-| `skim-inputs-mp.py` | Skims CICADANtuples ROOT files on CERN EOS; parallelized. Runs on EOS — configure paths before use. |
-| `process_to_hdf5.py` | Converts skimmed ROOT files to HDF5 format, applying nPV cuts properly (samples first then cuts, to avoid run-period bias). Fixes the biased-ordering problem of the previous pipeline. |
-| `check_sampling_npv.py` | Diagnostic: verifies nPV distribution of sampled events matches expectation after the corrected sampling strategy. |
-| `observable_plotter.py` | Plots distributions of observables (nPV, total_et, first_jet_eta, ht) per class. |
-| `et_regions_plotter.py` | Plots raw calorimeter grid distributions per class. |
-| `pileup_correlation_plotter.py` | Investigates correlations between pileup (nPV) and reconstruction energy. |
-| `teacher_roc.py` | ROC curves for the CICADA baseline ("teacher") model. |
-| `plots/` | Output directory for the above visualizations; includes `zb_eos_npv_distribution.png` (nPV diagnostic). |
-
-### `fast-ad/outputs/` — Model Checkpoints & Result
-
-| Directory | Description |
-|-----------|-------------|
-| `nae_phase2_dim20_zb/` | NAE with LMC, 20-dimensional latent space with n_z=60, λ_z=0.01, T=0.5, γ=0.005. |
-| `nae_mc_oracle_dim20_zb/` | Oracle experiment: replace Langevin sampling with real MC negatives. Establishes upper bound on contrastive objective. |
-| `latent_dim_variation/` | Sweep of AE models at latent dims 10, 20, 30, 40, 50, 60, 70, 80. Each subdir: `ae_zb_dim{N}/model_best.pkl`. |
-
-Each checkpoint directory typically contains:
-- `model_best.pkl` — PyTorch state dict (best by validation AUC or loss).
-- `events.out.tfevents.*` — TensorBoard logs.
-
-### `fast-ad/autoresearch/` — Autonomous Hyperparameter Search
-
-An autonomous research agent that iteratively modifies `train.py` to maximize anomaly detection AUC. (Previously `nae-autoresearch/`.)
-
-| File | Description |
-|------|-------------|
-| `train.py` | **The modifiable file.** Contains all NAE Phase 2 hyperparameters (GAMMA, NEG_LAMBDA, Z_STEPS, Z_STEP_SIZE, X_STEPS, X_NOISE_STD, etc.), Langevin sampling loops, replay buffer, loss function, and architecture. The agent modifies only this file. |
-| `evaluate.py` | **Read-only evaluation harness.** Runs `train.py`, reads `metrics.json`, computes score = best_val_auc × stability_multiplier. Collapsed runs score 0.0. |
-| `program.md` | Agent instructions: metric definition, failure modes, 12 hyperparameter categories to explore, research strategy, known instabilities. |
-| `run_autoresearch.sh` | Slurm job script: submits evaluation harness to GPU, keeps node alive for interactive agent. |
-
-### `fast-ad/plots/` — Generated Visualizations
-
-| Subdirectory | Content |
-|--------------|---------|
-| `rocs_test/` | AE vs NAE ROC curves on held-out test split (per-signal + combined overlays). |
-| `rocs_mc_oracle/` | Oracle NAE ROC curves; oracle-vs-teacher comparison plots. |
-| `latent_dim_variation/` | Per-signal ROC curves across latent dims, mean-AUC-vs-dim summary, `auc_summary.csv`. |
-| `training/` | Training curves (loss, AUC over epochs) from TensorBoard logs. |
+Key findings from the latent space analysis:
+- Total E_T is encoded with near-perfect fidelity (R² ≈ 0.995).
+- Pileup (n_PV) is weakly but non-negligibly encoded (R² ≈ 0.018, ~55× less than E_T).
+- Jet kinematics (leading jet η) are essentially absent (R² ≈ 0.037).
+- Latent dimension z₁₇ dominates both E_T and teacher score prediction by lasso coefficient magnitude, despite ranking far below z₆₁ in pairwise correlations — a key multivariate finding.
+- AUC is robust to latent dimension choice across d = 10–80 for most signals.
 
 ---
 
-## `slurm_scripts/` — HPC Job Submission
+## Repository Structure
 
-All scripts run on the adroit cluster (Slurm), load `anaconda3/2024.10` + `cudatoolkit/12.6`, and activate the conda env at `conda/envs/myenv`.
-
-| Script | Description |
-|--------|-------------|
-| `run_training.sh` | Phase 1 AE + Phase 2 NAE training (24h walltime, 1 GPU, 64 GB RAM). |
-| `run_classifiers.sh` | Runs both `train_et_regions_classifier.py` and `train_latent_classifier.py` sequentially (4h, GPU). |
-| `run_lasso.sh` | Runs `lasso_analysis.py` (CPU-only, 4 cores, 16 GB RAM). |
-| `eval_latent_dim_rocs.sh` | Evaluates ROC curves for all latent dim variations. |
-| `run_ae_vs_nae_rocs.sh` | Generates AE vs NAE comparison ROC plots. |
-| `run_nae_mc_oracle_rocs.sh` | Runs `nae_mc_oracle_rocs.py` on a GPU node. |
-| `run_process.sh` | Runs `process_to_hdf5.py` (EOS data pipeline). |
-| `skim_all.sh` | Re-skims all event types from CICADANtuples on CERN EOS. |
-| `train_latent_dim_sweep.sh` | Trains AE at multiple latent dimensions (parameter sweep). |
-| `slurm_test.sh` | Minimal test to verify environment. |
+```
+cms-l1t-autoencoders/
+├── fast-ad/                        # Main ML project (NAE/AE training + evaluation)
+│   ├── fastad/                     # Core library
+│   │   ├── models/
+│   │   │   ├── modules.py          # Encoder/decoder building blocks
+│   │   │   ├── teachers.py         # AE and NAEWithEnergyTraining model classes
+│   │   │   └── __init__.py         # Model factory functions
+│   │   ├── datasets.py             # CICADA dataset loader, 80/10/10 stratified split
+│   │   ├── trainers.py             # Training loop (Phase 1: loss, Phase 2: AUC)
+│   │   └── loggers.py              # TensorBoard integration
+│   ├── train-teacher.py            # Main training entry point
+│   ├── ae_vs_nae_rocs.py           # AE vs NAE ROC comparison
+│   ├── eval_latent_dim_rocs.py     # Latent dimension sweep evaluation
+│   ├── nae_mc_oracle_rocs.py       # Oracle upper-bound experiment
+│   ├── plot_training.py            # TensorBoard → clean training curves
+│   ├── autoresearch/               # Autonomous hyperparameter search agent
+│   ├── data/                       # Data processing scripts + HDF5 files (gitignored)
+│   └── outputs/                    # Model checkpoints + TensorBoard logs
+├── correlations.py                 # t-SNE + observable correlation heatmaps
+├── lasso_analysis.py               # Lasso regression on CICADA latent space
+├── train_latent_classifier.py      # Latent-space event classifiers (XGBoost + MLP)
+├── train_et_regions_classifier.py  # Raw ET-region baseline classifiers
+├── slurm_scripts/                  # Adroit HPC job submission scripts
+├── plots/                          # Generated figures (latent analysis)
+└── requirements_backup.txt         # Full conda environment snapshot
+```
 
 ---
 
-## `plots/` — Root-Level Generated Plots
+## Setup
 
-| Subdirectory | Content |
-|--------------|---------|
-| `lasso/` | LASSO regularization paths, active sets, R^2 per observable. |
-| `correlations/` | Observable correlation heatmaps across classes. |
-| `et_regions_classifier/` | Confusion matrices, ROC curves, feature importances (et_regions classifiers). |
-| `latent_classifier/` | Same for latent-space classifiers. |
-| `tsne/` | t-SNE embeddings of latent space. |
-| `training/` | Training curve figures. |
+### Prerequisites
+
+- Python 3.10+
+- CUDA-capable GPU (training was run on Princeton Adroit, node `adroit-h11g1`)
+- Conda recommended
+
+### Environment
+
+```bash
+conda create -n cms-ad python=3.10
+conda activate cms-ad
+pip install torch==2.5.1+cu121 torchvision==0.20.1+cu121 --index-url https://download.pytorch.org/whl/cu121
+pip install numpy scikit-learn xgboost h5py tensorboard tensorboardx matplotlib
+```
+
+Key package versions used in the thesis:
+
+| Package | Version |
+|---------|---------|
+| PyTorch | 2.5.1+cu121 |
+| NumPy | 2.2.6 |
+| scikit-learn | 1.7.2 |
+| XGBoost | 3.2.0 |
+| h5py | 3.14.0 |
+| TensorBoard | 2.20.0 |
+
+### Data
+
+The 11 HDF5 files (`data/h5_files/`) are **not committed** to this repository due to size. They are derived from CICADANtuples ROOT files available on CERN EOS at:
+
+```
+/eos/cms/store/group/phys_exotica/axol1tl/CICADANtuples/
+```
+
+To reproduce the HDF5 files from scratch:
+
+1. **Skim ROOT files** (on CERN lxplus/EOS):
+   ```bash
+   python fast-ad/data/skim-inputs-mp.py
+   ```
+
+2. **Convert to HDF5** (with corrected uniform random sampling to avoid nPV bias):
+   ```bash
+   python fast-ad/data/process_to_hdf5.py
+   ```
+
+3. **Verify nPV distribution**:
+   ```bash
+   python fast-ad/data/check_sampling_npv.py
+   ```
+
+Each HDF5 file contains the following fields:
+
+| Field | Shape | Description |
+|-------|-------|-------------|
+| `et_regions` | (N, 18, 14) | Raw calorimeter trigger tower images |
+| `teacher_latent` | (N, 80) | CICADA teacher-v1.0.0 latent encodings |
+| `teacher_score` | (N,) | Teacher reconstruction error (anomaly score) |
+| `total_et` | (N,) | Scalar sum of all trigger tower E_T [GeV] |
+| `nPV` | (N,) | Number of primary vertices (pileup proxy) |
+| `first_jet_eta` | (N,) | Leading jet pseudorapidity |
+| `ht` | (N,) | Scalar sum of jet transverse momenta [GeV] |
+
+**Important**: The Zero Bias HDF5 file was originally built from sequential ROOT file reads, producing a biased nPV distribution (the Gaussian peak disappearing). The corrected pipeline (`process_to_hdf5.py`) uses uniform random sampling. See Appendix A of the thesis for details.
+
+---
+
+## Training
+
+### Phase 1 — Standard Autoencoder
+
+```bash
+python fast-ad/train-teacher.py \
+    --dataset CICADA \
+    --model AE \
+    --data-root-path /path/to/data/h5_files/ \
+    --latent-dim 20 \
+    --epochs 100 \
+    -o outputs/ae_phase1_dim20/
+```
+
+The Phase 1 AE uses Adam (lr=1e-4, weight decay=1e-4), validates every 10,000 steps, and saves the checkpoint with the lowest validation reconstruction loss.
+
+### Phase 2 — Normalized Autoencoder (Energy-Based)
+
+```bash
+python fast-ad/train-teacher.py \
+    --dataset CICADA \
+    --model NAEWithEnergyTraining \
+    --data-root-path /path/to/data/h5_files/ \
+    --load-pretrained-path outputs/ae_phase1_dim20/model_best.pkl \
+    --latent-dim 20 \
+    --epochs 50 \
+    -o outputs/nae_phase2_dim20/
+```
+
+Phase 2 loads the Phase 1 checkpoint, projects latent codes onto the unit sphere S¹⁹, and trains with contrastive divergence loss using Langevin Monte Carlo negative sampling. Best checkpoint is selected by **validation AUC** (not loss). See `fast-ad/fastad/models/teachers.py` for the full NAE implementation and documented bug fixes.
+
+### Oracle Upper Bound
+
+To establish the theoretical performance ceiling, replace Langevin sampling with real MC signal events as negatives:
+
+```bash
+python fast-ad/train-teacher.py \
+    --dataset CICADA \
+    --model NAEWithEnergyTraining \
+    --data-root-path /path/to/data/h5_files/ \
+    --load-pretrained-path outputs/ae_phase1_dim20/model_best.pkl \
+    --latent-dim 20 \
+    --use-mc-negatives \
+    -o outputs/nae_mc_oracle_dim20/
+```
+
+### Monitoring
+
+```bash
+tensorboard --logdir outputs/nae_phase2_dim20/
+```
+
+### HPC (Princeton Adroit)
+
+All training runs use the SLURM scripts in `slurm_scripts/`. They load modules `anaconda3/2024.10` and `cudatoolkit/12.6` and activate the conda env at `/scratch/network/lo8603/thesis/conda/envs/myenv`. Update the paths for your environment.
+
+```bash
+sbatch slurm_scripts/run_training.sh        # Phase 1 + Phase 2 training
+sbatch slurm_scripts/train_latent_dim_sweep.sh  # Latent dimension sweep
+```
+
+---
+
+## Evaluation
+
+### AE vs NAE ROC Comparison
+
+```bash
+python fast-ad/ae_vs_nae_rocs.py \
+    --data-root-path /path/to/data/h5_files/ \
+    --ae-path outputs/ae_phase1_dim20/model_best.pkl \
+    --nae-path outputs/nae_phase2_dim20/model_best.pkl \
+    --latent-dim 20
+```
+
+Outputs per-signal ROC curves with bootstrapped 95% CIs to `fast-ad/plots/rocs_test/`.
+
+### Latent Dimension Sweep
+
+```bash
+python fast-ad/eval_latent_dim_rocs.py \
+    --data-root-path /path/to/data/h5_files/ \
+    --sweep-dir outputs/latent_dim_variation/
+```
+
+### Oracle Evaluation
+
+```bash
+python fast-ad/nae_mc_oracle_rocs.py \
+    --data-root-path /path/to/data/h5_files/ \
+    --nae-path outputs/nae_mc_oracle_dim20/model_best.pkl
+```
+
+---
+
+## Latent Space Analysis
+
+### t-SNE + Observable Correlations
+
+```bash
+python correlations.py --data-root-path /path/to/data/h5_files/
+```
+
+Outputs t-SNE embeddings colored by observable (E_T, student score, n_PV, leading jet η, H_T) to `plots/tsne/`, and Pearson correlation heatmaps to `plots/correlations/`.
+
+### Lasso Regression
+
+```bash
+python lasso_analysis.py --data-root-path /path/to/data/h5_files/
+```
+
+Runs 5-fold cross-validated lasso regression of each observable (E_T, teacher score, n_PV, first jet η, H_T) on the 80-dimensional latent space. Produces regularization paths, active sets, and cumulative R² curves in `plots/lasso/`.
+
+### Event Classifiers
+
+```bash
+# Latent-space classifier (XGBoost + MLP)
+python train_latent_classifier.py --data-root-path /path/to/data/h5_files/
+
+# Raw ET-region classifier (baseline comparison)
+python train_et_regions_classifier.py --data-root-path /path/to/data/h5_files/
+```
+
+---
+
+## Autoresearch Framework
+
+The `fast-ad/autoresearch/` directory contains an autonomous hyperparameter search agent (inspired by [Karpathy's autoresearch](https://github.com/karpathy/autoresearch)). An LLM agent iteratively modifies `train.py` to maximize `best_val_auc × stability`, running 10–15 minute experiments on Adroit.
+
+```bash
+# Launch agent session (keeps GPU node alive for interactive agent)
+sbatch fast-ad/autoresearch/run_autoresearch.sh
+```
+
+The agent modifies only `train.py` (hyperparameters, LMC loops, replay buffer, loss). `evaluate.py` is read-only and scores each run.
+
+---
+
+## Data Split
+
+All results use a **three-way stratified split** of Zero Bias data (80% train / 10% validation / 10% test) with fixed seeds (SEED_80_20=42, SEED_50_50=43). This eliminates checkpoint-selection bias from using the same set for both early stopping and ROC reporting. All AUC values reported in the thesis are on the held-out test split.
+
+```
+SEED_80_20 = 42  # reproduces original 80/20 split; Phase 1 checkpoints remain valid
+SEED_50_50 = 43  # splits remaining 20% into val/test
+```
+
+---
+
+## NAE Training Instabilities
+
+Energy-based training is notoriously unstable. Appendix B of the thesis documents seven specific bug classes encountered and fixed:
+
+1. Missing gradient normalization in latent Langevin chain
+2. Improper clamping pulling off-manifold negatives back into data range
+3. Replay buffer initialized with real ZB encodings rather than uniform sphere samples
+4. Energy regularization applied to both positive and negative samples
+5. Temperature coupling contrastive loss and regularization
+6. Divergence-skip logic suppressing corrective gradients
+7. Best checkpoint selected by validation loss rather than validation AUC
+
+The final hyperparameter configuration is in Appendix B, Table B.1.
+
+---
+
+## Citation
+
+If you use this code or build on this work, please cite:
+
+```
+@thesis{oshaughnessy2026cicada,
+  author  = {O'Shaughnessy, Liam J.},
+  title   = {Real-Time Autoencoder Anomaly Detection Methods at the Large Hadron Collider},
+  school  = {Princeton University},
+  year    = {2026},
+  type    = {Senior Thesis},
+  department = {Department of Physics}
+}
+```
+
+This work builds on:
+- [CICADA](https://arxiv.org/abs/2411.19506): Gandrakota et al., "Real-time Anomaly Detection at the L1 Trigger of CMS Experiment" (2024)
+- [NAE](https://arxiv.org/abs/2105.05735): Yoon, Noh, Park, "Autoencoding Under Normalization Constraints" (2021)
+- [fast-ad](https://github.com/ligerlac/fast-ad): Lino Gerlach's fast anomaly detection codebase
+
+---
+
+## License
+
+For research and educational use. Contact [lo8603@princeton.edu](mailto:lo8603@princeton.edu) for other uses.
